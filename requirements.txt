@@ -1,0 +1,7 @@
+# Dependencies
+
+fastapi
+uvicorn
+groq
+python-dotenv
+pydantic

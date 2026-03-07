@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>LLM Router</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet"/>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --border: #1e1e2e;
+    --accent-simple: #00e5ff;
+    --accent-complex: #bf5fff;
+    --text: #e8e8f0;
+    --muted: #555570;
+    --user-bg: #161625;
+    --bot-bg: #0f0f1a;
+    --radius: 16px;
+  }
+
+  body {
+    font-family: 'Syne', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Noise overlay ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 999;
+  }
+
+  /* ── Header ── */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 28px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+
+  .logo {
+    display: flex; align-items: center; gap: 12px;
+  }
+
+  .logo-icon {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, var(--accent-simple), var(--accent-complex));
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+
+  .logo-text {
+    font-size: 20px; font-weight: 800; letter-spacing: -0.5px;
+  }
+
+  .logo-text span { color: var(--accent-simple); }
+
+  .badge {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+  }
+
+  /* ── Key bar ── */
+  .key-bar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 28px;
+    background: #0d0d16;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .key-bar label {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px; color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .key-bar input {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 14px;
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    outline: none;
+    transition: border-color .2s;
+  }
+
+  .key-bar input:focus { border-color: var(--accent-simple); }
+
+  .key-status {
+    font-size: 18px;
+    transition: all .3s;
+  }
+
+  /* ── Model legend ── */
+  .legend {
+    display: flex; gap: 20px;
+    padding: 10px 28px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .legend-item {
+    display: flex; align-items: center; gap: 7px;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px; color: var(--muted);
+  }
+
+  .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+  }
+
+  .dot.simple  { background: var(--accent-simple); box-shadow: 0 0 6px var(--accent-simple); }
+  .dot.complex { background: var(--accent-complex); box-shadow: 0 0 6px var(--accent-complex); }
+
+  /* ── Chat area ── */
+  #chat {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    scroll-behavior: smooth;
+  }
+
+  #chat::-webkit-scrollbar { width: 4px; }
+  #chat::-webkit-scrollbar-track { background: transparent; }
+  #chat::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* ── Empty state ── */
+  .empty-state {
+    margin: auto;
+    text-align: center;
+    opacity: .4;
+  }
+
+  .empty-state .big { font-size: 48px; margin-bottom: 12px; }
+  .empty-state p { font-size: 14px; color: var(--muted); }
+
+  /* ── Messages ── */
+  .msg {
+    display: flex; gap: 12px;
+    animation: fadeUp .3s ease forwards;
+    opacity: 0;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .msg.user { flex-direction: row-reverse; }
+
+  .avatar {
+    width: 34px; height: 34px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; flex-shrink: 0;
+  }
+
+  .avatar.user-av  { background: #1e1e30; }
+  .avatar.bot-av   { background: linear-gradient(135deg, #0d2a2e, #1a0d2e); border: 1px solid var(--border); }
+
+  .bubble-wrap { max-width: 70%; display: flex; flex-direction: column; gap: 6px; }
+  .msg.user .bubble-wrap { align-items: flex-end; }
+
+  .bubble {
+    padding: 14px 18px;
+    border-radius: var(--radius);
+    font-size: 14px; line-height: 1.65;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .msg.user  .bubble { background: var(--user-bg); border: 1px solid var(--border); border-top-right-radius: 4px; }
+  .msg.bot   .bubble { background: var(--bot-bg);  border: 1px solid var(--border); border-top-left-radius: 4px; }
+
+  /* route tag */
+  .route-tag {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: 'Space Mono', monospace;
+    font-size: 10px; padding: 3px 10px;
+    border-radius: 20px; border: 1px solid;
+    width: fit-content;
+  }
+
+  .route-tag.simple  { color: var(--accent-simple);  border-color: rgba(0,229,255,.25); background: rgba(0,229,255,.05); }
+  .route-tag.complex { color: var(--accent-complex); border-color: rgba(191,95,255,.25); background: rgba(191,95,255,.05); }
+
+  /* ── Typing indicator ── */
+  .typing .bubble {
+    display: flex; gap: 5px; align-items: center;
+    padding: 16px 18px;
+  }
+
+  .typing .bubble span {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--muted);
+    animation: blink 1.2s infinite;
+  }
+
+  .typing .bubble span:nth-child(2) { animation-delay: .2s; }
+  .typing .bubble span:nth-child(3) { animation-delay: .4s; }
+
+  @keyframes blink {
+    0%, 80%, 100% { opacity: .2; transform: scale(.8); }
+    40%           { opacity: 1;  transform: scale(1); }
+  }
+
+  /* ── Input bar ── */
+  .input-bar {
+    padding: 16px 28px;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    display: flex; gap: 10px; align-items: flex-end;
+    flex-shrink: 0;
+  }
+
+  #input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 16px;
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    resize: none;
+    outline: none;
+    max-height: 140px;
+    line-height: 1.5;
+    transition: border-color .2s;
+  }
+
+  #input:focus { border-color: var(--accent-simple); }
+  #input::placeholder { color: var(--muted); }
+
+  #send {
+    width: 46px; height: 46px;
+    border-radius: 12px;
+    border: none; cursor: pointer;
+    background: linear-gradient(135deg, var(--accent-simple), var(--accent-complex));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+    transition: opacity .2s, transform .15s;
+    flex-shrink: 0;
+  }
+
+  #send:hover { opacity: .85; transform: scale(1.05); }
+  #send:disabled { opacity: .3; cursor: not-allowed; transform: none; }
+
+  /* ── Error toast ── */
+  #toast {
+    position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: #2a0a0a; border: 1px solid #5a1a1a;
+    color: #ff7070; font-family: 'Space Mono', monospace; font-size: 12px;
+    padding: 10px 20px; border-radius: 8px;
+    opacity: 0; transition: all .3s; pointer-events: none;
+    z-index: 100;
+  }
+
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">⚡</div>
+    <div class="logo-text">LLM <span>Router</span></div>
+  </div>
+  <div class="badge">System 1 vs System 2</div>
+</header>
+
+<div class="key-bar">
+  <label>GROQ_API_KEY</label>
+  <input type="password" id="apiKey" placeholder="gsk_…  paste your key here" />
+  <span class="key-status" id="keyStatus">🔑</span>
+</div>
+
+<div class="legend">
+  <div class="legend-item"><div class="dot simple"></div> Llama 3 8B — fast &amp; cheap</div>
+  <div class="legend-item"><div class="dot complex"></div> DeepSeek-R1 70B — deep reasoning</div>
+</div>
+
+<div id="chat">
+  <div class="empty-state" id="emptyState">
+    <div class="big">⚡</div>
+    <p>Ask anything. Simple questions go fast.<br/>Hard ones get the big brain.</p>
+  </div>
+</div>
+
+<div class="input-bar">
+  <textarea id="input" rows="1" placeholder="Type a message…"></textarea>
+  <button id="send">➤</button>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  const chatEl    = document.getElementById('chat');
+  const inputEl   = document.getElementById('input');
+  const sendBtn   = document.getElementById('send');
+  const apiKeyEl  = document.getElementById('apiKey');
+  const keyStatus = document.getElementById('keyStatus');
+  const emptyState= document.getElementById('emptyState');
+  const toast     = document.getElementById('toast');
+
+  const API = 'http://localhost:8000/chat';
+
+  // auto-resize textarea
+  inputEl.addEventListener('input', () => {
+    inputEl.style.height = 'auto';
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 140) + 'px';
+  });
+
+  // key indicator
+  apiKeyEl.addEventListener('input', () => {
+    keyStatus.textContent = apiKeyEl.value.startsWith('gsk_') ? '✅' : '🔑';
+  });
+
+  // send on Enter (shift+enter = newline)
+  inputEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  });
+
+  sendBtn.addEventListener('click', sendMessage);
+
+  function showToast(msg) {
+    toast.textContent = msg;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 3500);
+  }
+
+  function addMessage(role, text, meta = null) {
+    emptyState?.remove();
+
+    const msg = document.createElement('div');
+    msg.className = `msg ${role}`;
+
+    const av = document.createElement('div');
+    av.className = `avatar ${role === 'user' ? 'user-av' : 'bot-av'}`;
+    av.textContent = role === 'user' ? '🧑' : '🤖';
+
+    const wrap = document.createElement('div');
+    wrap.className = 'bubble-wrap';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.textContent = text;
+    wrap.appendChild(bubble);
+
+    if (meta) {
+      const tag = document.createElement('div');
+      tag.className = `route-tag ${meta.complexity}`;
+      tag.innerHTML = `<span>${meta.complexity === 'simple' ? '⚡' : '🧠'}</span>${meta.model_label}`;
+      wrap.appendChild(tag);
+    }
+
+    msg.appendChild(av);
+    msg.appendChild(wrap);
+    chatEl.appendChild(msg);
+    chatEl.scrollTop = chatEl.scrollHeight;
+    return bubble;
+  }
+
+  function addTyping() {
+    const msg = document.createElement('div');
+    msg.className = 'msg bot typing';
+    msg.id = 'typing';
+    msg.innerHTML = `
+      <div class="avatar bot-av">🤖</div>
+      <div class="bubble-wrap">
+        <div class="bubble"><span></span><span></span><span></span></div>
+      </div>`;
+    chatEl.appendChild(msg);
+    chatEl.scrollTop = chatEl.scrollHeight;
+  }
+
+  function removeTyping() {
+    document.getElementById('typing')?.remove();
+  }
+
+  async function sendMessage() {
+    const text = inputEl.value.trim();
+    if (!text) return;
+
+    const key = apiKeyEl.value.trim();
+    if (!key) { showToast('⚠️  Paste your Groq API key above first!'); return; }
+
+    inputEl.value = '';
+    inputEl.style.height = 'auto';
+    sendBtn.disabled = true;
+
+    addMessage('user', text);
+    addTyping();
+
+    try {
+      const res = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, api_key: key }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      removeTyping();
+      addMessage('bot', data.message, { complexity: data.complexity, model_label: data.model_label });
+
+    } catch (err) {
+      removeTyping();
+      showToast('❌  ' + err.message);
+      addMessage('bot', '⚠️ Error: ' + err.message);
+    } finally {
+      sendBtn.disabled = false;
+      inputEl.focus();
+    }
+  }
+</script>
+</body>
+</html>
