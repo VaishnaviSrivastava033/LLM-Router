@@ -19,7 +19,7 @@ This project applies the same architecture to AI inference:
 | Your Prompt | Complexity | Routed To | Why |
 |---|---|---|---|
 | "Hey, what's up?" | Simple | Llama 3.1 8B ⚡ | No need to overthink a greeting |
-| "Analyze the CAP theorem tradeoffs in distributed systems" | Complex | Llama 3.3 70B 🧠 | This deserves real reasoning |
+| "Analyze the CAP theorem tradeoffs in distributed systems" | Complex | DeepSeek R1 70B 🧠 | This deserves real reasoning |
 
 The router itself uses the *cheap* model to classify — because even the decision of "how hard is this?" doesn't need a genius.
 
@@ -41,7 +41,7 @@ User Prompt
 │      ┌──────┴──────┐        │
 │      ▼             ▼        │
 │  [Simple]      [Complex]    │
-│  Llama 3.1     Llama 3.3    │
+│  Llama 3.1     DeepSeekR1    │
 │    8B ⚡         70B 🧠     │
 └─────────────────────────────┘
     │
@@ -152,7 +152,7 @@ To deploy your own instance:
 | Role | Model | Provider | Speed |
 |---|---|---|---|
 | Classifier + Simple | `llama-3.1-8b-instant` | Groq | ~100ms |
-| Complex Reasoning | `llama-3.3-70b-versatile` | Groq | ~500ms |
+| Complex Reasoning | `DeepSeek r1 70b-versatile` | Groq | ~500ms |
 
 Both are **fully open-source** models running on Groq's LPU (Language Processing Unit) hardware. No OpenAI. No vendor lock-in.
 
